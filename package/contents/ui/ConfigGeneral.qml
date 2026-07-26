@@ -7,6 +7,7 @@ SimpleKCM {
     id: configItem
     property alias cfg_delay: delay.value
     property alias cfg_bold: bold.checked
+    property alias cfg_chartMaxPoints: chartMaxPoints.value
 
     Kirigami.FormLayout {
 
@@ -15,6 +16,16 @@ SimpleKCM {
             text: "Use Bold Text "
             LayoutMirroring.enabled: true
             anchors.horizontalCenter: parent.horizontalCenter
+        }
+        Controls.SpinBox {
+            id: chartMaxPoints
+            from: 10
+            to: 1000
+            value: 120
+            stepSize: 10
+            editable: true
+            Kirigami.FormData.label: "Chart Points"
+            hoverEnabled: true
         }
         Controls.SpinBox {
             id: delay

@@ -17,5 +17,12 @@
       <whatsthis>Use bold text</whatsthis>
       <default>false</default>
     </entry>
+    <entry name="chartMaxPoints" type="Int">
+      <label>Chart Points</label>
+      <whatsthis>Number of recent power samples to keep in the line chart history.</whatsthis>
+      <default>120</default>
+      <min>10</min>
+      <max>1000</max>
+    </entry>
   </group>
 </kcfg>

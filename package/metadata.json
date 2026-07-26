@@ -13,7 +13,7 @@
     "License": "GPL3",
     "Name": "CPU Power Monitor",
     "KPackageStructure": "Plasma/Applet",
-    "Version": "0.5",
+    "Version": "0.6",
     "Website": "https://github.com/kphanipavan/cpu-power-monitor"
   },
   "X-Plasma-API-Minimum-Version": "6.0"

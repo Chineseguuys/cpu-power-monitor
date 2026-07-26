@@ -30,6 +30,7 @@ Drag and drop the widget from the `Add or Manage Widgets` either to the desktop 
 
 1. Update Interval: Changes the rate at which the widget updates.
 2. Bold Text: Changes display text to <b>Bold</b>
+3. Chart Points: Number of recent power samples shown in the popup line chart (60 by default).
 
 ### Note
 1. The widget displays power consumption in Watts.
