@@ -28,9 +28,11 @@ PlasmoidItem { // Main component of the plasmoid
 
     // ---- Display state ----
     property var power: "FX-PR"           // String shown in the big label ("xx.x W" or "FX-PR")
-    property double oldNRG: 0             // Previous cumulative energy (J)
-    property double newNRG: 0             // Latest cumulative energy (J), filled asynchronously by DataSource
-    property double oldTime: 0           // Previous sample timestamp (ms)
+    property double baseNRG: 0           // 上一次成功采样时记录的累计能量 J（差分基准）
+    property double baseTime: 0          // 上一次成功采样的时间戳 ms
+    property bool primed: false           // 是否已采到首个基准样本：未 primed 时只记基准不算功率，
+                                           // 避免 0→真实值 在 tiny dt 下算出天文功率污染 peak/history
+    property bool inFlight: false          // 是否有 cat 在路上：避免请求堆积 / 乱序覆盖（旧返回值顶掉新返回值会算出负功率）
     property string raplPath: "/sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/energy_uj"
 
     // ---- Chart state ----
@@ -49,10 +51,11 @@ PlasmoidItem { // Main component of the plasmoid
         engine: "executable"
         connectedSources: []
         onNewData: function (source, data) {
-            // chmod produces no output; cat returns the cumulative energy in microjoules.
+            // cat 返回后立刻处理（与 sysfs 真实读出时刻对齐），不再等下次 update()
+            // 用陈旧 newNRG 算差；chmod 无输出走同一路径会被 handleReading 当作无效读数过滤。
             var stdout = data["stdout"];
             disconnectSource(source);
-            root.newNRG = stdout.trim();
+            handleReading(stdout);
         }
 
         function exec(cmd) {
@@ -92,6 +95,11 @@ PlasmoidItem { // Main component of the plasmoid
         root.peakPower = 0;
         root.sumPower = 0;
         root.sampleCount = 0;
+        // 基准也清掉，下一个读数重新当作 primed 起点；否则 reset 后用老 baseNRG 算差仍可能离谱。
+        root.primed = false;
+        root.baseNRG = 0;
+        root.baseTime = 0;
+        // inFlight 留给 handleReading 自然清，避免压住一个已完成的请求状态。
         root.samplePushed();
     }
 
@@ -114,25 +122,44 @@ PlasmoidItem { // Main component of the plasmoid
     }
 
     function update() {
-        // Fire an async cat; note root.newNRG here still holds the value from the
-        // previous completed read (one-tick lag), which is fine for a rolling chart.
+        // Timer 只负责"拍快门"发起 cat —— 真正的 ΔE/Δt 算在 onNewData 那侧，因为只有
+        // cat 真实返回那一刻对应的能量与时间戳才有意义。原代码在 update() 同步流程里
+        // 用陈旧的 root.newNRG 算功率，导致：(a) cat 比 tick 慢时 ΔE=0 持续推 0 进 history，
+        // 把平均拉到 0.x W；(b) 乱序返回时旧新值颠倒ΔE<0，推负值进 history。
+        if (root.inFlight)
+            return;
+        root.inFlight = true;
         executable.exec('cat ' + root.raplPath);
-        if (root.newNRG == '') {
-            root.power = 'FX-PR';
-        } else {
-            var time = (new Date).getTime();
-            var timeDelta = (time - root.oldTime) / 1000;
-            var joules = parseInt(root.newNRG) / 1e+06;
-            var p = Math.round((joules - root.oldNRG) * 10 / (timeDelta)) / 10;
-            root.oldNRG = joules;
-            root.oldTime = time;
-            // Keep root.power as the display string, and feed the numeric value to the chart.
-            if (Number.isInteger(p))
-                root.power = p + '.0 W';
-            else
-                root.power = p + ' W';
-            pushSample(p);
+    }
+
+    // cat 真实返回时调用：用本次读数与上次基准做差分算功率，
+    // 再经 sanity filter 投入 history，避免脏样本腐蚀 peak/avg/折线。
+    function handleReading(stdout) {
+        root.inFlight = false;
+        var raw = String(stdout).trim();
+        var parsed = parseInt(raw);
+        // 不可读（权限不足 / 传感器不存在）→ 显示 FX-PR；基准不动，下次读出仍可与上次正常差分。
+        if (raw === "" || isNaN(parsed) || parsed <= 0) {
+            root.power = "FX-PR";
+            return;
         }
+        var joules = parsed / 1e+06;
+        var now = (new Date).getTime();
+        if (root.primed) {
+            var dt = (now - root.baseTime) / 1000;
+            if (dt > 0) {
+                var p = Math.round((joules - root.baseNRG) * 10 / dt) / 10;
+                // 过滤异常样本：负值（RAPL 回绕 / 残留乱序）和夸张巨值都不进 history。
+                if (p >= 0 && p < 1000) {
+                    root.power = Number.isInteger(p) ? p + ".0 W" : p + " W";
+                    pushSample(p);
+                }
+            }
+        }
+        // 每次有效读数都更新基准，即便本轮 p 被过滤，避免下轮用旧基准算出离谱值。
+        root.baseNRG = joules;
+        root.baseTime = now;
+        root.primed = true;
     }
 
     // Shared chart renderer used by both the mini and the big Canvas.
