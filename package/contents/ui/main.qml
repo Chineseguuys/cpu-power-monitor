@@ -165,6 +165,7 @@ PlasmoidItem { // Main component of the plasmoid
     // Shared chart renderer used by both the mini and the big Canvas.
     // Adaptive Y range = max(history) * 1.1 with a 1W floor, so idle CPUs still show
     // a visible waveform instead of a flat line at the bottom.
+    // showGrid 模式下额外绘制 X/Y 轴线与 Y 轴刻度标签（大图专用；mini 图走紧凑路径）。
     function drawChart(ctx, w, h, data, opts) {
         // opts: { stroke, fill, lineWidth, showGrid, gridColor }
         ctx.reset();
@@ -178,34 +179,62 @@ PlasmoidItem { // Main component of the plasmoid
             if (data[i] > peak) peak = data[i];
         var yMax = Math.max(peak, 1) * 1.1;
 
-        var pad = opts.showGrid ? 8 : 0;
-        var gw = w - pad * 2;
-        var gh = h - pad * 2;
+        // 绘图区四边留白：左侧专门为 Y 轴刻度标签腾空间，其余三边收紧。
+        var padL = opts.showGrid ? 34 : 0;
+        var padT = opts.showGrid ? 4 : 0;
+        var padR = opts.showGrid ? 4 : 0;
+        var padB = opts.showGrid ? 6 : 0;
+        var gw = w - padL - padR;
+        var gh = h - padT - padB;
         if (gw <= 0 || gh <= 0)
             return;
 
         if (opts.showGrid && opts.gridColor) {
             ctx.strokeStyle = opts.gridColor;
             ctx.lineWidth = 1;
+            // 水平网格线
             for (var g = 0; g <= 4; ++g) {
-                var gy = pad + gh * g / 4;
+                var gy = padT + gh * g / 4;
                 ctx.beginPath();
-                ctx.moveTo(pad, gy);
-                ctx.lineTo(w - pad, gy);
+                ctx.moveTo(padL, gy);
+                ctx.lineTo(w - padR, gy);
                 ctx.stroke();
             }
+
+            // Y 轴：轴线 + 0/半量程/满量程三个刻度标签。
+            // 颜色从折线色（主题 textColor）派生，保证深浅主题下都可见。
+            var axis = Qt.rgba(opts.stroke.r, opts.stroke.g, opts.stroke.b, 0.5);
+            ctx.strokeStyle = axis;
+            ctx.fillStyle = axis;
+            ctx.font = "8px sans-serif";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            for (var t = 0; t <= 2; ++t) {
+                var ty = padT + gh - gh * t / 2;
+                ctx.beginPath();
+                ctx.moveTo(padL - 3, ty);
+                ctx.lineTo(padL, ty);
+                ctx.stroke();
+                ctx.fillText((yMax * t / 2).toFixed(1), padL - 5, ty);
+            }
+
+            // X 轴基线（画在网格之后，用更实的颜色压住 g=4 那条网格线）
+            ctx.beginPath();
+            ctx.moveTo(padL, padT + gh);
+            ctx.lineTo(w - padR, padT + gh);
+            ctx.stroke();
         }
 
         // Filled area under the curve (big chart only).
         if (opts.fill) {
             ctx.beginPath();
             for (var j = 0; j < n; ++j) {
-                var x = pad + gw * j / (n - 1);
-                var y = pad + gh - gh * (data[j] / yMax);
+                var x = padL + gw * j / (n - 1);
+                var y = padT + gh - gh * (data[j] / yMax);
                 if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
-            ctx.lineTo(pad + gw, pad + gh);
-            ctx.lineTo(pad, pad + gh);
+            ctx.lineTo(padL + gw, padT + gh);
+            ctx.lineTo(padL, padT + gh);
             ctx.closePath();
             ctx.fillStyle = opts.fill;
             ctx.fill();
@@ -216,8 +245,8 @@ PlasmoidItem { // Main component of the plasmoid
         ctx.lineWidth = opts.lineWidth;
         ctx.beginPath();
         for (var k = 0; k < n; ++k) {
-            var px = pad + gw * k / (n - 1);
-            var py = pad + gh - gh * (data[k] / yMax);
+            var px = padL + gw * k / (n - 1);
+            var py = padT + gh - gh * (data[k] / yMax);
             if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -315,7 +344,10 @@ PlasmoidItem { // Main component of the plasmoid
                                   Kirigami.Theme.textColor.b, 0.18),
                     lineWidth: 2,
                     showGrid: true,
-                    gridColor: Qt.rgba(1, 1, 1, 0.08)
+                    // 网格色随主题走：硬编码白色在浅色主题下不可见
+                    gridColor: Qt.rgba(Kirigami.Theme.textColor.r,
+                                       Kirigami.Theme.textColor.g,
+                                       Kirigami.Theme.textColor.b, 0.15)
                 });
             }
         }
