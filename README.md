@@ -39,3 +39,12 @@ Drag and drop the widget from the `Add or Manage Widgets` either to the desktop 
     * don't have the permission to read the said file.
 3. If later is the case, right click the widget and select `Fix Sensor Permission`. Enter the superuser password when prompted. (Temporary, resets on reboot)
     ![Fix permission](images/fixPermission.png)
+
+### 折线图
+
+弹出窗口使用折线图显示:
+- 状态栏显示折线图
+- 弹出窗口显示实时功耗/峰值功耗/平均功耗
+- 弹出窗口折线图显示
+
+![line chart](images/linechart.png)
